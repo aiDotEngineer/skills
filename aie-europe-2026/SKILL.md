@@ -96,7 +96,9 @@ console.log(keynotes.map(k => `${k.time}: ${k.title} — ${k.speakers.join(', ')
 ```python
 import requests
 
+# --- Fetch and explore talks ---
 data = requests.get('https://ai.engineer/europe/talks.json').json()
+print(f"{data['totalTalks']} talks across {data['dates']}")
 
 # Day 2 talks
 day2 = [t for t in data['talks'] if t.get('day') == 'April 9']
@@ -109,6 +111,60 @@ agent_talks = [t for t in data['talks']
                if 'agent' in (t.get('title') or '').lower()
                or t.get('track', '').lower() == 'ai agents']
 print(f"\n{len(agent_talks)} talks about agents")
+
+# --- Fetch speakers ---
+sp = requests.get('https://ai.engineer/europe/speakers.json').json()
+
+# Speakers with GitHub profiles
+with_github = [s for s in sp['speakers'] if s.get('github')]
+print(f"\n{len(with_github)} speakers with GitHub profiles")
+for s in with_github[:5]:
+    print(f"  {s['name']} ({s.get('company', '?')}): {s['github']}")
+
+# Group speakers by company
+from collections import Counter
+companies = Counter(s.get('company') for s in sp['speakers'] if s.get('company'))
+for company, count in companies.most_common(10):
+    print(f"  {company}: {count} speakers")
+```
+
+### Python — MCP tool call
+
+```python
+import requests
+import json
+
+MCP_URL = 'https://ai.engineer/europe/mcp'
+
+def mcp_call(tool_name: str, arguments: dict = {}) -> dict:
+    """Call an MCP tool and return the parsed result."""
+    resp = requests.post(MCP_URL, json={
+        'jsonrpc': '2.0',
+        'id': 1,
+        'method': 'tools/call',
+        'params': {'name': tool_name, 'arguments': arguments}
+    }, headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
+    result = resp.json()['result']['content'][0]['text']
+    return json.loads(result)
+
+# Get conference info
+info = mcp_call('get_conference_info')
+print(f"{info['name']} — {info['dates']} — {info['location']}")
+
+# Search speakers
+speakers = mcp_call('list_speakers', {'search': 'Google'})
+for s in speakers['speakers']:
+    print(f"  {s['name']}: {s.get('role', '')} @ {s.get('company', '')}")
+
+# Get Day 2 keynotes
+keynotes = mcp_call('list_talks', {'day': 'April 9', 'type': 'keynote'})
+for t in keynotes['talks']:
+    print(f"  {t['time']}: {t['title']} — {', '.join(t['speakers'])}")
+
+# Get schedule for one day
+schedule = mcp_call('get_schedule', {'day': 'April 10'})
+for session in schedule['days'][0]['sessions']:
+    print(f"  {session.get('time', '?')}: {session.get('title', 'TBA')}")
 ```
 
 ## MCP server
@@ -138,7 +194,7 @@ Add to your Claude Desktop, Cursor, Windsurf, or any MCP client config:
 | `list_talks` | Talks with descriptions, times, rooms, tracks | `day`, `type`, `track`, `search` |
 | `get_schedule` | Full schedule organized by day | `day` |
 
-### Example tool call
+### Example tool call (curl)
 
 ```bash
 curl -X POST https://ai.engineer/europe/mcp \
@@ -153,6 +209,22 @@ curl -X POST https://ai.engineer/europe/mcp \
       "arguments": { "search": "Anthropic" }
     }
   }'
+```
+
+### Example tool call (Python)
+
+```python
+import requests, json
+
+resp = requests.post('https://ai.engineer/europe/mcp', json={
+    'jsonrpc': '2.0', 'id': 1,
+    'method': 'tools/call',
+    'params': {'name': 'list_talks', 'arguments': {'track': 'MCP'}}
+}, headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
+
+result = json.loads(resp.json()['result']['content'][0]['text'])
+for talk in result['talks']:
+    print(f"{talk['title']} — {', '.join(talk['speakers'])}")
 ```
 
 ### Initialize + discover tools

@@ -163,6 +163,64 @@ Plain text. Contains everything in `llms.txt` plus: every talk description, ever
 
 ---
 
+## Python dataclasses
+
+Optional typed wrappers for working with the API in Python:
+
+```python
+from dataclasses import dataclass, field
+from urllib.request import urlopen
+import json
+
+@dataclass
+class Talk:
+    title: str = ''
+    description: str = ''
+    day: str = ''
+    time: str = ''
+    room: str = ''
+    type: str = ''
+    track: str = ''
+    speakers: list[str] = field(default_factory=list)
+
+@dataclass
+class Speaker:
+    name: str = ''
+    role: str = ''
+    company: str = ''
+    companyDescription: str = ''
+    twitter: str = ''
+    linkedin: str = ''
+    github: str = ''
+    website: str = ''
+    photoUrl: str = ''
+    talks: list[Talk] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.talks = [Talk(**t) if isinstance(t, dict) else t for t in self.talks]
+
+def fetch_talks() -> list[Talk]:
+    data = json.loads(urlopen('https://ai.engineer/europe/talks.json').read())
+    return [Talk(**t) for t in data['talks']]
+
+def fetch_speakers() -> list[Speaker]:
+    data = json.loads(urlopen('https://ai.engineer/europe/speakers.json').read())
+    return [Speaker(**s) for s in data['speakers']]
+
+# Usage
+talks = fetch_talks()
+keynotes = [t for t in talks if t.type == 'keynote']
+for k in keynotes:
+    print(f"{k.time}: {k.title} — {', '.join(k.speakers)}")
+
+speakers = fetch_speakers()
+for s in speakers:
+    if s.company and 'google' in s.company.lower():
+        print(f"{s.name} ({s.role}) — {len(s.talks)} talks")
+```
+
+---
+
 ## Common response headers
 
 All JSON endpoints return:

@@ -235,3 +235,95 @@ Send an array of JSON-RPC requests:
 ```
 
 Returns an array of responses.
+
+## Python client
+
+Complete Python helper for calling MCP tools:
+
+```python
+import requests
+import json
+from typing import Any
+
+MCP_URL = 'https://ai.engineer/europe/mcp'
+
+def mcp_call(tool_name: str, arguments: dict[str, Any] | None = None) -> dict:
+    """Call an MCP tool and return the parsed result."""
+    resp = requests.post(MCP_URL, json={
+        'jsonrpc': '2.0',
+        'id': 1,
+        'method': 'tools/call',
+        'params': {'name': tool_name, 'arguments': arguments or {}}
+    }, headers={
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+    })
+    resp.raise_for_status()
+    data = resp.json()
+    if 'error' in data:
+        raise Exception(f"MCP error {data['error']['code']}: {data['error']['message']}")
+    return json.loads(data['result']['content'][0]['text'])
+
+def mcp_list_tools() -> list[dict]:
+    """List all available MCP tools."""
+    resp = requests.post(MCP_URL, json={
+        'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'
+    }, headers={'Content-Type': 'application/json'})
+    return resp.json()['result']['tools']
+
+# --- Examples ---
+
+# List available tools
+tools = mcp_list_tools()
+for tool in tools:
+    print(f"{tool['name']}: {tool['description']}")
+
+# Get conference info
+info = mcp_call('get_conference_info')
+print(f"\n{info['name']} — {info['dates']} — {info['venue']}")
+
+# Search speakers by company
+speakers = mcp_call('list_speakers', {'search': 'Anthropic'})
+print(f"\n{speakers['totalSpeakers']} speakers from Anthropic:")
+for s in speakers['speakers']:
+    talks = ', '.join(t['title'] for t in s.get('talks', []) if t.get('title'))
+    print(f"  {s['name']} ({s.get('role', '?')}): {talks}")
+
+# Get MCP track talks
+mcp_talks = mcp_call('list_talks', {'track': 'MCP'})
+print(f"\n{mcp_talks['totalTalks']} MCP track talks:")
+for t in mcp_talks['talks']:
+    print(f"  {t.get('time', '?')}: {t['title']} — {', '.join(t['speakers'])}")
+
+# Get Day 2 schedule
+schedule = mcp_call('get_schedule', {'day': 'April 9'})
+for day in schedule['days']:
+    print(f"\n--- {day['day']} ---")
+    for session in day['sessions']:
+        print(f"  {session.get('time', '?')}: {session.get('title', 'TBA')}")
+```
+
+## JavaScript/TypeScript client
+
+```typescript
+const MCP_URL = 'https://ai.engineer/europe/mcp';
+
+async function mcpCall(toolName: string, args: Record<string, string> = {}) {
+  const resp = await fetch(MCP_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1,
+      method: 'tools/call',
+      params: { name: toolName, arguments: args },
+    }),
+  });
+  const data = await resp.json();
+  if (data.error) throw new Error(`MCP error ${data.error.code}: ${data.error.message}`);
+  return JSON.parse(data.result.content[0].text);
+}
+
+// Get all keynotes
+const keynotes = await mcpCall('list_talks', { type: 'keynote' });
+console.log(keynotes.talks.map(t => `${t.time}: ${t.title}`));
+```
