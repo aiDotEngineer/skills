@@ -282,7 +282,7 @@ type PublicSpeaker = {
 
 See `references/SCHEMAS.md` for full response envelope structures and real API response examples.
 
-See `references/EXAMPLES.md` for 5 complete TS + Python recipes: topic index, conflict detection, company leaderboard, multi-track day planner, and speaker social graph.
+See `references/EXAMPLES.md` for 5 complete TS + Python recipes: topic index, semantic embed/cluster/retrieve, company leaderboard, multi-track day planner, and speaker social graph.
 
 ## Edge cases
 

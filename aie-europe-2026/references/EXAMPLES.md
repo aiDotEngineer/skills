@@ -134,60 +134,88 @@ for entry in index[:10]:
 
 ---
 
-## 2. Personal Schedule Builder with Conflict Detection
+## 2. Semantic Search: Embed, Cluster, and Retrieve Similar Talks & Speakers
 
-Fetch all talks, pick favorites by keyword, and detect time/room conflicts — the logic a schedule-builder app needs.
+Use OpenAI embeddings to build a vector index of talks and speakers. Then query it to find the most relevant sessions for any natural-language interest — "multimodal reasoning agents" finds talks you'd never match with keyword search.
 
 ### TypeScript
 
 ~~~typescript
-// Uses the same filtering pattern as the MCP list_talks tool in mcp.ts:
-//   if (day) talks = talks.filter((t) => t.day === day);
-//   if (type) talks = talks.filter((t) => t.type?.toLowerCase() === type.toLowerCase());
+// Embed talk descriptions + speaker bios, then retrieve by cosine similarity.
+// Uses OpenAI embeddings API — swap for any embedding provider.
+
+import OpenAI from 'openai';
+
+const openai = new OpenAI(); // uses OPENAI_API_KEY env var
 
 type PublicTalk = {
   title?: string; description?: string; day?: string; time?: string;
   room?: string; type?: string; track?: string; speakers: string[];
 };
 
-type Conflict = { day: string; time: string; talks: PublicTalk[] };
+type EmbeddedTalk = PublicTalk & { embedding: number[] };
 
-async function findConflicts(favoriteTalkTitles: string[]): Promise<Conflict[]> {
+function cosineSim(a: number[], b: number[]): number {
+  let dot = 0, magA = 0, magB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    magA += a[i]! * a[i]!;
+    magB += b[i]! * b[i]!;
+  }
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+async function embedTexts(texts: string[]): Promise<number[][]> {
+  // Batch embed — OpenAI supports up to 2048 inputs per call
+  const res = await openai.embeddings.create({
+    model: 'text-embedding-3-small',
+    input: texts,
+  });
+  return res.data.map((d) => d.embedding);
+}
+
+async function buildTalkIndex(): Promise<EmbeddedTalk[]> {
   const res = await fetch('https://ai.engineer/europe/talks.json');
   const { talks }: { talks: PublicTalk[] } = await res.json();
 
-  const favorites = talks.filter((t) =>
-    favoriteTalkTitles.some((fav) =>
-      t.title?.toLowerCase().includes(fav.toLowerCase())
-    )
+  // Build text representation for each talk
+  const texts = talks.map((t) =>
+    [t.title, t.description, t.track, t.speakers.join(', ')]
+      .filter(Boolean).join(' — ')
   );
 
-  // Group by day + time to detect conflicts
-  const slotMap = new Map<string, PublicTalk[]>();
-  for (const talk of favorites) {
-    const key = `${talk.day}|${talk.time}`;
-    const list = slotMap.get(key) ?? [];
-    list.push(talk);
-    slotMap.set(key, list);
-  }
-
-  return Array.from(slotMap.entries())
-    .filter(([_, talks]) => talks.length > 1)
-    .map(([key, talks]) => {
-      const [day, time] = key.split('|');
-      return { day: day!, time: time!, talks };
-    });
+  const embeddings = await embedTexts(texts);
+  return talks.map((t, i) => ({ ...t, embedding: embeddings[i]! }));
 }
 
-const conflicts = await findConflicts(['MCP', 'agents', 'open source', 'infrastructure']);
-if (conflicts.length === 0) {
-  console.log('No conflicts!');
-} else {
-  for (const c of conflicts) {
-    console.log(`\nConflict on ${c.day} at ${c.time}:`);
-    for (const t of c.talks) {
-      console.log(`  [${t.room}] ${t.title} - ${t.speakers.join(', ')}`);
-    }
+async function findSimilarTalks(
+  query: string,
+  index: EmbeddedTalk[],
+  topK = 5
+): Promise<{ talk: EmbeddedTalk; score: number }[]> {
+  const [queryEmb] = await embedTexts([query]);
+  return index
+    .map((talk) => ({ talk, score: cosineSim(queryEmb!, talk.embedding) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
+}
+
+// Build the index once, then query as many times as you want
+const index = await buildTalkIndex();
+
+const queries = [
+  'building autonomous coding agents',
+  'MCP tool integrations for production',
+  'open source model fine-tuning',
+  'AI safety and evaluation frameworks',
+];
+
+for (const query of queries) {
+  console.log(`\n"${query}":`);
+  const results = await findSimilarTalks(query, index, 3);
+  for (const { talk, score } of results) {
+    console.log(`  [${score.toFixed(3)}] ${talk.title} — ${talk.speakers.join(', ')}`);
+    console.log(`         ${talk.day} ${talk.time} | ${talk.track ?? 'Main'}`);
   }
 }
 ~~~
@@ -196,36 +224,104 @@ if (conflicts.length === 0) {
 
 ~~~python
 import requests
-from collections import defaultdict
+import numpy as np
+from openai import OpenAI
 
-def find_conflicts(favorite_keywords: list[str]) -> list[dict]:
-    """Find scheduling conflicts among your favorite talks."""
+client = OpenAI()  # uses OPENAI_API_KEY env var
+
+def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+def embed_texts(texts: list[str]) -> np.ndarray:
+    """Batch embed texts using OpenAI."""
+    res = client.embeddings.create(model='text-embedding-3-small', input=texts)
+    return np.array([d.embedding for d in res.data])
+
+def build_talk_index() -> tuple[list[dict], np.ndarray]:
+    """Fetch talks and embed them."""
     data = requests.get('https://ai.engineer/europe/talks.json').json()
+    talks = data['talks']
 
-    favorites = [
-        t for t in data['talks']
-        if any(kw.lower() in (t.get('title') or '').lower() for kw in favorite_keywords)
+    texts = [
+        ' — '.join(filter(None, [
+            t.get('title'), t.get('description'),
+            t.get('track'), ', '.join(t.get('speakers', []))
+        ]))
+        for t in talks
     ]
 
-    slots: dict[str, list[dict]] = defaultdict(list)
-    for talk in favorites:
-        key = f"{talk.get('day')}|{talk.get('time')}"
-        slots[key].append(talk)
+    embeddings = embed_texts(texts)
+    return talks, embeddings
+
+def find_similar_talks(query: str, talks: list[dict],
+                       embeddings: np.ndarray, top_k: int = 5) -> list[dict]:
+    """Find the most similar talks to a natural-language query."""
+    query_emb = embed_texts([query])[0]
+    scores = [cosine_sim(query_emb, emb) for emb in embeddings]
+    ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
 
     return [
-        {'day': k.split('|')[0], 'time': k.split('|')[1], 'talks': v}
-        for k, v in slots.items() if len(v) > 1
+        {'talk': talks[i], 'score': score}
+        for i, score in ranked[:top_k]
     ]
 
-conflicts = find_conflicts(['MCP', 'agents', 'open source', 'infrastructure'])
-if not conflicts:
-    print('No conflicts!')
-else:
-    for c in conflicts:
-        print(f"\nConflict on {c['day']} at {c['time']}:")
-        for t in c['talks']:
-            speakers = ', '.join(t.get('speakers', []))
-            print(f"  [{t.get('room', '?')}] {t.get('title', 'TBA')} - {speakers}")
+# --- Cluster speakers by expertise ---
+
+def cluster_speakers(n_clusters: int = 8):
+    """Embed speaker profiles and cluster them by expertise."""
+    from sklearn.cluster import KMeans
+
+    data = requests.get('https://ai.engineer/europe/speakers.json').json()
+    speakers = data['speakers']
+
+    texts = [
+        ' — '.join(filter(None, [
+            s.get('name'), s.get('role'), s.get('company'),
+            ', '.join(t.get('title', '') for t in s.get('talks', []))
+        ]))
+        for s in speakers
+    ]
+
+    embeddings = embed_texts(texts)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(embeddings)
+
+    clusters: dict[int, list] = {}
+    for i, label in enumerate(labels):
+        clusters.setdefault(label, []).append(speakers[i])
+
+    return clusters
+
+# --- Usage ---
+
+# Build index once
+talks, embeddings = build_talk_index()
+
+# Semantic search
+queries = [
+    'building autonomous coding agents',
+    'MCP tool integrations for production',
+    'open source model fine-tuning',
+    'AI safety and evaluation frameworks',
+]
+
+for query in queries:
+    print(f'\n"{query}":')
+    results = find_similar_talks(query, talks, embeddings, top_k=3)
+    for r in results:
+        t = r['talk']
+        speakers = ', '.join(t.get('speakers', []))
+        print(f"  [{r['score']:.3f}] {t.get('title', 'TBA')} — {speakers}")
+        print(f"         {t.get('day', '?')} {t.get('time', '?')} | {t.get('track', 'Main')}")
+
+# Cluster speakers by expertise
+print('\n--- Speaker Clusters ---\n')
+clusters = cluster_speakers(n_clusters=6)
+for label, members in sorted(clusters.items()):
+    names = [s['name'] for s in members[:5]]
+    companies = set(s.get('company', '?') for s in members if s.get('company'))
+    print(f"Cluster {label} ({len(members)} speakers): {', '.join(names)}")
+    print(f"  Companies: {', '.join(list(companies)[:5])}\n")
 ~~~
 
 ---
