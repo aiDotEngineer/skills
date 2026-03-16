@@ -81,14 +81,14 @@ Returns all speakers, optionally filtered by search term.
 
 **Response content:** `{ "totalSpeakers": N, "speakers": [...] }`
 
-### list_talks
+### list_sessions
 
-Returns all talks, optionally filtered.
+Returns all sessions, optionally filtered.
 
 ```json
 {
-  "name": "list_talks",
-  "description": "List all confirmed talks/sessions with titles, descriptions, speakers, times, and rooms.",
+  "name": "list_sessions",
+  "description": "List all confirmed sessions (talks + workshops) with titles, descriptions, speakers, times, and rooms.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -106,7 +106,7 @@ Returns all talks, optionally filtered.
       },
       "search": {
         "type": "string",
-        "description": "Optional search term to filter talks by title or speaker name."
+        "description": "Optional search term to filter sessions by title or speaker name."
       }
     },
     "required": []
@@ -122,7 +122,7 @@ Returns all talks, optionally filtered.
 
 Multiple filters are AND-ed together.
 
-**Response content:** `{ "totalTalks": N, "talks": [...] }`
+**Response content:** `{ "totalSessions": N, "sessions": [...] }`
 
 ### get_schedule
 
@@ -187,7 +187,7 @@ Returns the schedule grouped by day.
   "id": 3,
   "method": "tools/call",
   "params": {
-    "name": "list_talks",
+    "name": "list_sessions",
     "arguments": { "day": "April 9", "type": "keynote" }
   }
 }
@@ -205,7 +205,7 @@ Tool call responses wrap results in MCP content format:
     "content": [
       {
         "type": "text",
-        "text": "{ \"totalTalks\": 12, \"talks\": [...] }"
+        "text": "{ \"totalSessions\": 12, \"sessions\": [...] }"
       }
     ]
   }
@@ -286,13 +286,13 @@ print(f"\n{info['name']} — {info['dates']} — {info['venue']}")
 speakers = mcp_call('list_speakers', {'search': 'Anthropic'})
 print(f"\n{speakers['totalSpeakers']} speakers from Anthropic:")
 for s in speakers['speakers']:
-    talks = ', '.join(t['title'] for t in s.get('talks', []) if t.get('title'))
-    print(f"  {s['name']} ({s.get('role', '?')}): {talks}")
+    sess = ', '.join(t['title'] for t in s.get('sessions', []) if t.get('title'))
+    print(f"  {s['name']} ({s.get('role', '?')}): {sess}")
 
-# Get MCP track talks
-mcp_talks = mcp_call('list_talks', {'track': 'MCP'})
-print(f"\n{mcp_talks['totalTalks']} MCP track talks:")
-for t in mcp_talks['talks']:
+# Get MCP track sessions
+mcp_sessions = mcp_call('list_sessions', {'track': 'MCP'})
+print(f"\n{mcp_sessions['totalSessions']} MCP track sessions:")
+for t in mcp_sessions['sessions']:
     print(f"  {t.get('time', '?')}: {t['title']} — {', '.join(t['speakers'])}")
 
 # Get Day 2 schedule
@@ -324,6 +324,6 @@ async function mcpCall(toolName: string, args: Record<string, string> = {}) {
 }
 
 // Get all keynotes
-const keynotes = await mcpCall('list_talks', { type: 'keynote' });
-console.log(keynotes.talks.map(t => `${t.time}: ${t.title}`));
+const keynotes = await mcpCall('list_sessions', { type: 'keynote' });
+console.log(keynotes.sessions.map(t => `${t.time}: ${t.title}`));
 ```

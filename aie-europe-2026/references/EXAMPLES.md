@@ -33,7 +33,7 @@ type PublicSpeaker = {
   company?: string;
   twitter?: string;
   photoUrl?: string;
-  talks: PublicTalk[];
+  sessions: PublicTalk[];
 };
 
 type TopicEntry = {
@@ -48,7 +48,7 @@ async function buildTopicIndex(): Promise<TopicEntry[]> {
   const topicMap = new Map<string, TopicEntry['speakers']>();
 
   for (const speaker of speakers) {
-    for (const talk of speaker.talks) {
+    for (const talk of speaker.sessions) {
       const topics: string[] = [];
       if (talk.track) topics.push(talk.track);
 
@@ -103,7 +103,7 @@ def build_topic_index() -> list[dict]:
     topic_map: dict[str, list[dict]] = defaultdict(list)
 
     for speaker in data['speakers']:
-        for talk in speaker.get('talks', []):
+        for talk in speaker.get('sessions', []):
             topics = []
             if talk.get('track'):
                 topics.append(talk['track'].lower())
@@ -287,9 +287,9 @@ type PublicTalk = {
 
 async function getDayPlan(day: string) {
   const res = await fetch('https://ai.engineer/europe/sessions.json');
-  const { talks }: { talks: PublicTalk[] } = await res.json();
+  const { sessions }: { sessions: PublicTalk[] } = await res.json();
 
-  const dayTalks = talks.filter((t) => t.day === day && t.type !== 'break');
+  const dayTalks = sessions.filter((t) => t.day === day && t.type !== 'break');
 
   // Group by time slot - same Map pattern as llms-txt.ts
   const slotMap = new Map<string, PublicTalk[]>();
@@ -355,11 +355,11 @@ def get_day_plan(day: str) -> list[dict]:
     """Get all time slots for a given day with parallel track options."""
     data = requests.get('https://ai.engineer/europe/sessions.json').json()
 
-    day_talks = [t for t in data['talks']
-                 if t.get('day') == day and t.get('type') != 'break']
+    day_sessions = [t for t in data['sessions']
+                    if t.get('day') == day and t.get('type') != 'break']
 
     slots: dict[str, list] = defaultdict(list)
-    for talk in day_talks:
+    for talk in day_sessions:
         slots[talk.get('time', 'TBD')].append(talk)
 
     return sorted(
@@ -425,25 +425,25 @@ async function buildSpeakerGraph(): Promise<Connection[]> {
     fetch('https://ai.engineer/europe/sessions.json'),
     fetch('https://ai.engineer/europe/speakers.json'),
   ]);
-  const { talks }: { talks: PublicTalk[] } = await talksRes.json();
+  const { sessions }: { sessions: PublicTalk[] } = await talksRes.json();
   const { speakers }: { speakers: PublicSpeaker[] } = await spkRes.json();
 
   const companyOf = new Map(speakers.map((s) => [s.name, s.company]));
   const connections = new Map<string, Connection>();
 
-  for (const talk of talks) {
-    if (talk.speakers.length < 2) continue;
+  for (const session of sessions) {
+    if (session.speakers.length < 2) continue;
 
-    for (let i = 0; i < talk.speakers.length; i++) {
-      for (let j = i + 1; j < talk.speakers.length; j++) {
-        const pair = [talk.speakers[i]!, talk.speakers[j]!].sort() as [string, string];
+    for (let i = 0; i < session.speakers.length; i++) {
+      for (let j = i + 1; j < session.speakers.length; j++) {
+        const pair = [session.speakers[i]!, session.speakers[j]!].sort() as [string, string];
         const key = pair.join('|');
 
         const existing = connections.get(key) ?? {
           speakers: pair, sharedTalks: [],
           companies: [companyOf.get(pair[0]), companyOf.get(pair[1])],
         };
-        if (talk.title) existing.sharedTalks.push(talk.title);
+        if (session.title) existing.sharedTalks.push(session.title);
         connections.set(key, existing);
       }
     }
@@ -473,14 +473,14 @@ from itertools import combinations
 
 def build_speaker_graph() -> list[dict]:
     """Find speakers who co-present talks to map the collaboration network."""
-    talks = requests.get('https://ai.engineer/europe/talks.json').json()['talks']
+    sessions = requests.get('https://ai.engineer/europe/sessions.json').json()['sessions']
     speakers = requests.get('https://ai.engineer/europe/speakers.json').json()['speakers']
 
     company_of = {s['name']: s.get('company') for s in speakers}
     connections: dict[tuple, dict] = {}
 
-    for talk in talks:
-        spks = talk.get('speakers', [])
+    for session in sessions:
+        spks = session.get('speakers', [])
         if len(spks) < 2:
             continue
 
@@ -491,8 +491,8 @@ def build_speaker_graph() -> list[dict]:
                     'speakers': [a, b], 'shared_talks': [],
                     'companies': [company_of.get(a), company_of.get(b)],
                 }
-            if talk.get('title'):
-                connections[key]['shared_talks'].append(talk['title'])
+            if session.get('title'):
+                connections[key]['shared_talks'].append(session['title'])
 
     return sorted(connections.values(),
                   key=lambda x: len(x['shared_talks']), reverse=True)

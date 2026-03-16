@@ -125,7 +125,7 @@ curl https://ai.engineer/europe/llms.txt
 curl https://ai.engineer/europe/llms-full.txt
 
 # Structured JSON
-curl https://ai.engineer/europe/sessions.json | jq '.talks[:3]'
+curl https://ai.engineer/europe/sessions.json | jq '.sessions[:3]'
 curl https://ai.engineer/europe/speakers.json | jq '.speakers[:3]'
 ```
 
@@ -138,8 +138,8 @@ npx @aidotengineer/aie --list              # List all conferences
 npx @aidotengineer/aie europe              # Europe conference info
 npx @aidotengineer/aie eu speakers         # All speakers
 npx @aidotengineer/aie eu speakers --search "Anthropic"
-npx @aidotengineer/aie eu talks --day "April 9"
-npx @aidotengineer/aie eu talks --type workshop
+npx @aidotengineer/aie eu sessions --day "April 9"
+npx @aidotengineer/aie eu sessions --type workshop
 npx @aidotengineer/aie eu search "agents"  # Full-text search
 npx @aidotengineer/aie eu speakers --json  # Raw JSON output
 npx @aidotengineer/aie eu mcp             # MCP connection info
@@ -158,8 +158,8 @@ const anthropic = speakers.filter(s =>
 console.log(`${anthropic.length} speakers from Anthropic`);
 
 // Get all keynotes
-const talks = await fetch('https://ai.engineer/europe/sessions.json').then(r => r.json());
-const keynotes = talks.talks.filter(t => t.type === 'keynote');
+const data = await fetch('https://ai.engineer/europe/sessions.json').then(r => r.json());
+const keynotes = data.sessions.filter(t => t.type === 'keynote');
 console.log(keynotes.map(k => `${k.time}: ${k.title} — ${k.speakers.join(', ')}`));
 ```
 
@@ -168,21 +168,21 @@ console.log(keynotes.map(k => `${k.time}: ${k.title} — ${k.speakers.join(', ')
 ```python
 import requests
 
-# --- Fetch and explore talks ---
+# --- Fetch and explore sessions ---
 data = requests.get('https://ai.engineer/europe/sessions.json').json()
-print(f"{data['totalTalks']} talks across {data['dates']}")
+print(f"{data['totalSessions']} sessions across {data['dates']}")
 
-# Day 2 talks
-day2 = [t for t in data['talks'] if t.get('day') == 'April 9']
-for talk in day2:
-    speakers = ', '.join(talk.get('speakers', []))
-    print(f"{talk.get('time', '?')}: {talk.get('title', 'TBA')} — {speakers}")
+# Day 2 sessions
+day2 = [s for s in data['sessions'] if s.get('day') == 'April 9']
+for s in day2:
+    speakers = ', '.join(s.get('speakers', []))
+    print(f"{s.get('time', '?')}: {s.get('title', 'TBA')} — {speakers}")
 
-# Talks about agents
-agent_talks = [t for t in data['talks']
-               if 'agent' in (t.get('title') or '').lower()
-               or t.get('track', '').lower() == 'ai agents']
-print(f"\n{len(agent_talks)} talks about agents")
+# Sessions about agents
+agent_sessions = [s for s in data['sessions']
+                  if 'agent' in (s.get('title') or '').lower()
+                  or s.get('track', '').lower() == 'ai agents']
+print(f"\n{len(agent_sessions)} sessions about agents")
 
 # --- Fetch speakers ---
 sp = requests.get('https://ai.engineer/europe/speakers.json').json()
@@ -229,8 +229,8 @@ for s in speakers['speakers']:
     print(f"  {s['name']}: {s.get('role', '')} @ {s.get('company', '')}")
 
 # Get Day 2 keynotes
-keynotes = mcp_call('list_talks', {'day': 'April 9', 'type': 'keynote'})
-for t in keynotes['talks']:
+keynotes = mcp_call('list_sessions', {'day': 'April 9', 'type': 'keynote'})
+for t in keynotes['sessions']:
     print(f"  {t['time']}: {t['title']} — {', '.join(t['speakers'])}")
 
 # Get schedule for one day
@@ -262,8 +262,8 @@ Add to your Claude Desktop, Cursor, Windsurf, or any MCP client config:
 | Tool | Description | Optional params |
 |---|---|---|
 | `get_conference_info` | Dates, venue, links, metadata | — |
-| `list_speakers` | Speakers with roles, companies, socials, talks | `search` |
-| `list_talks` | Talks with descriptions, times, rooms, tracks | `day`, `type`, `track`, `search` |
+| `list_speakers` | Speakers with roles, companies, socials, sessions | `search` |
+| `list_sessions` | Sessions with descriptions, times, rooms, tracks | `day`, `type`, `track`, `search` |
 | `get_schedule` | Full schedule organized by day | `day` |
 
 ### Example tool call (curl)
@@ -291,12 +291,12 @@ import requests, json
 resp = requests.post('https://ai.engineer/europe/mcp', json={
     'jsonrpc': '2.0', 'id': 1,
     'method': 'tools/call',
-    'params': {'name': 'list_talks', 'arguments': {'track': 'MCP'}}
+    'params': {'name': 'list_sessions', 'arguments': {'track': 'MCP'}}
 }, headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
 
 result = json.loads(resp.json()['result']['content'][0]['text'])
-for talk in result['talks']:
-    print(f"{talk['title']} — {', '.join(talk['speakers'])}")
+for s in result['sessions']:
+    print(f"{s['title']} — {', '.join(s['speakers'])}")
 ```
 
 ### Initialize + discover tools
@@ -348,7 +348,7 @@ type PublicSpeaker = {
   github?: string;     // Full URL
   website?: string;
   photoUrl?: string;   // "https://ai.engineer/europe-speakers/name.jpg"
-  talks: PublicTalk[];
+  sessions: PublicTalk[];
 };
 ```
 
@@ -358,7 +358,7 @@ See `references/EXAMPLES.md` for 4 complete TS + Python recipes: topic index, se
 
 ## Edge cases
 
-- Some talks have empty `description` — fall back to title + speakers
+- Some sessions have empty `description` — fall back to title + speakers
 - `speakers` array can be empty for break/logistics sessions
 - `type` field may be missing for some sessions — treat as "talk"
 - Speaker photos are served from `ai.engineer/europe-speakers/` — some speakers may not have a photo
