@@ -35,7 +35,7 @@ Base URL: `https://ai.engineer`
 |---|---|---|
 | `/europe/llms.txt` | Plain text | Conference overview optimized for LLM consumption |
 | `/europe/llms-full.txt` | Plain text | Full details — every talk, speaker bio, schedule |
-| `/europe/talks.json` | JSON | All talks with titles, descriptions, speakers, times, rooms, tracks |
+| `/europe/sessions.json` | JSON | All sessions (talks + workshops) with titles, descriptions, speakers, times, rooms, tracks |
 | `/europe/speakers.json` | JSON | All speakers with roles, companies, social links, photos, talks |
 | `/europe/mcp` | JSON-RPC | MCP server — tool calls for querying conference data |
 | `/europe/speakers-embeddings.json` | JSON | All speakers with 128-dim Gemini Embedding 2 vectors |
@@ -125,7 +125,7 @@ curl https://ai.engineer/europe/llms.txt
 curl https://ai.engineer/europe/llms-full.txt
 
 # Structured JSON
-curl https://ai.engineer/europe/talks.json | jq '.talks[:3]'
+curl https://ai.engineer/europe/sessions.json | jq '.talks[:3]'
 curl https://ai.engineer/europe/speakers.json | jq '.speakers[:3]'
 ```
 
@@ -158,7 +158,7 @@ const anthropic = speakers.filter(s =>
 console.log(`${anthropic.length} speakers from Anthropic`);
 
 // Get all keynotes
-const talks = await fetch('https://ai.engineer/europe/talks.json').then(r => r.json());
+const talks = await fetch('https://ai.engineer/europe/sessions.json').then(r => r.json());
 const keynotes = talks.talks.filter(t => t.type === 'keynote');
 console.log(keynotes.map(k => `${k.time}: ${k.title} — ${k.speakers.join(', ')}`));
 ```
@@ -169,7 +169,7 @@ console.log(keynotes.map(k => `${k.time}: ${k.title} — ${k.speakers.join(', ')
 import requests
 
 # --- Fetch and explore talks ---
-data = requests.get('https://ai.engineer/europe/talks.json').json()
+data = requests.get('https://ai.engineer/europe/sessions.json').json()
 print(f"{data['totalTalks']} talks across {data['dates']}")
 
 # Day 2 talks

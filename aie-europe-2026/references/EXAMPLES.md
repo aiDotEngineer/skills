@@ -286,7 +286,7 @@ type PublicTalk = {
 };
 
 async function getDayPlan(day: string) {
-  const res = await fetch('https://ai.engineer/europe/talks.json');
+  const res = await fetch('https://ai.engineer/europe/sessions.json');
   const { talks }: { talks: PublicTalk[] } = await res.json();
 
   const dayTalks = talks.filter((t) => t.day === day && t.type !== 'break');
@@ -353,7 +353,7 @@ from collections import defaultdict
 
 def get_day_plan(day: str) -> list[dict]:
     """Get all time slots for a given day with parallel track options."""
-    data = requests.get('https://ai.engineer/europe/talks.json').json()
+    data = requests.get('https://ai.engineer/europe/sessions.json').json()
 
     day_talks = [t for t in data['talks']
                  if t.get('day') == day and t.get('type') != 'break']
@@ -422,7 +422,7 @@ type Connection = {
 
 async function buildSpeakerGraph(): Promise<Connection[]> {
   const [talksRes, spkRes] = await Promise.all([
-    fetch('https://ai.engineer/europe/talks.json'),
+    fetch('https://ai.engineer/europe/sessions.json'),
     fetch('https://ai.engineer/europe/speakers.json'),
   ]);
   const { talks }: { talks: PublicTalk[] } = await talksRes.json();

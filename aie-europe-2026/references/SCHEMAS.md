@@ -2,9 +2,9 @@
 
 Full response structures for AI Engineer Europe 2026 endpoints.
 
-## talks.json
+## sessions.json
 
-**URL:** `GET https://ai.engineer/europe/talks.json`
+**URL:** `GET https://ai.engineer/europe/sessions.json`
 
 ### Response envelope
 
@@ -143,7 +143,7 @@ Speaker with multiple talks:
 - Speakers are sorted alphabetically by name
 - Social links are full URLs when present, omitted when absent
 - `photoUrl` follows the pattern `https://ai.engineer/europe-speakers/{filename}`
-- A speaker's `talks` array contains the same `PublicTalk` objects as `talks.json`
+- A speaker's `talks` array contains the same `PublicTalk` objects as `sessions.json`
 
 ---
 
@@ -200,7 +200,7 @@ class Speaker:
         self.talks = [Talk(**t) if isinstance(t, dict) else t for t in self.talks]
 
 def fetch_talks() -> list[Talk]:
-    data = json.loads(urlopen('https://ai.engineer/europe/talks.json').read())
+    data = json.loads(urlopen('https://ai.engineer/europe/sessions.json').read())
     return [Talk(**t) for t in data['talks']]
 
 def fetch_speakers() -> list[Speaker]:
