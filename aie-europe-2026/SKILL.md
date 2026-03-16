@@ -282,6 +282,8 @@ type PublicSpeaker = {
 
 See `references/SCHEMAS.md` for full response envelope structures and real API response examples.
 
+See `references/EXAMPLES.md` for 4 complete TS + Python recipes: topic index, semantic embed/cluster/retrieve, multi-track day planner, and speaker social graph.
+
 ## Edge cases
 
 - Some talks have empty `description` — fall back to title + speakers
