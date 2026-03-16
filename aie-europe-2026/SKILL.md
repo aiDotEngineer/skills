@@ -35,11 +35,83 @@ Base URL: `https://ai.engineer`
 |---|---|---|
 | `/europe/llms.txt` | Plain text | Conference overview optimized for LLM consumption |
 | `/europe/llms-full.txt` | Plain text | Full details — every talk, speaker bio, schedule |
-| `/europe/talks.json` | JSON | All talks with titles, descriptions, speakers, times, rooms, tracks |
+| `/europe/sessions.json` | JSON | All sessions (talks + workshops) with titles, descriptions, speakers, times, rooms, tracks |
 | `/europe/speakers.json` | JSON | All speakers with roles, companies, social links, photos, talks |
 | `/europe/mcp` | JSON-RPC | MCP server — tool calls for querying conference data |
+| `/europe/speakers-embeddings.json` | JSON | All speakers with 128-dim Gemini Embedding 2 vectors |
+| `/europe/sessions-embeddings.json` | JSON | All sessions with 128-dim Gemini Embedding 2 vectors |
 
 All endpoints are public, free, and CORS-enabled. Data is cached (`s-maxage=3600, stale-while-revalidate=86400`).
+
+## Embeddings
+
+Pre-computed [Gemini Embedding 2](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2-preview) vectors for semantic search, clustering, and recommendations.
+
+- **Model:** `gemini-embedding-2-preview`
+- **Dimensions:** 128 (truncated from 3072 via [Matryoshka Representation Learning](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2-preview#controlling-embedding-size))
+- **Task type:** `RETRIEVAL_DOCUMENT`
+
+The embedding JSON files include full metadata (name, company, role, talks, etc.) alongside the 128-dim vector for each speaker/session.
+
+### Fetch embeddings (curl)
+
+```bash
+# Speaker embeddings (128-dim Gemini Embedding 2, MRL)
+curl https://ai.engineer/europe/speakers-embeddings.json | jq '.speakers[:2]'
+
+# Session embeddings
+curl https://ai.engineer/europe/sessions-embeddings.json | jq '.sessions[:2]'
+```
+
+### JavaScript — cosine similarity search
+
+```javascript
+const res = await fetch('https://ai.engineer/europe/speakers-embeddings.json');
+const { speakers } = await res.json();
+
+// Cosine similarity
+const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
+const norm = (a) => Math.sqrt(dot(a, a));
+const cosine = (a, b) => dot(a, b) / (norm(a) * norm(b));
+
+// Compare against a query embedding (128-dim from Gemini)
+const ranked = speakers
+  .map(s => ({ name: s.name, score: cosine(queryEmbedding, s.embedding) }))
+  .sort((a, b) => b.score - a.score)
+  .slice(0, 5);
+console.log(ranked);
+```
+
+### Python — cosine similarity search
+
+```python
+import json, urllib.request, numpy as np
+
+data = json.loads(urllib.request.urlopen('https://ai.engineer/europe/speakers-embeddings.json').read())
+speakers = data['speakers']
+
+def cosine(a, b):
+    a, b = np.array(a), np.array(b)
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+ranked = sorted(speakers, key=lambda s: cosine(query_emb, s['embedding']), reverse=True)[:5]
+for s in ranked:
+    print(s['name'], s.get('company', ''))
+```
+
+### Generate your own query embedding (to search against pre-computed vectors)
+
+```bash
+# Use the Gemini API with the same model + MRL dimensionality
+curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2-preview:embedContent?key=$GEMINI_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "models/gemini-embedding-2-preview",
+    "content": { "parts": [{ "text": "autonomous coding agents" }] },
+    "taskType": "RETRIEVAL_QUERY",
+    "outputDimensionality": 128
+  }'
+```
 
 ## Quick start
 
@@ -53,7 +125,7 @@ curl https://ai.engineer/europe/llms.txt
 curl https://ai.engineer/europe/llms-full.txt
 
 # Structured JSON
-curl https://ai.engineer/europe/talks.json | jq '.talks[:3]'
+curl https://ai.engineer/europe/sessions.json | jq '.sessions[:3]'
 curl https://ai.engineer/europe/speakers.json | jq '.speakers[:3]'
 ```
 
@@ -66,8 +138,8 @@ npx @aidotengineer/aie --list              # List all conferences
 npx @aidotengineer/aie europe              # Europe conference info
 npx @aidotengineer/aie eu speakers         # All speakers
 npx @aidotengineer/aie eu speakers --search "Anthropic"
-npx @aidotengineer/aie eu talks --day "April 9"
-npx @aidotengineer/aie eu talks --type workshop
+npx @aidotengineer/aie eu sessions --day "April 9"
+npx @aidotengineer/aie eu sessions --type workshop
 npx @aidotengineer/aie eu search "agents"  # Full-text search
 npx @aidotengineer/aie eu speakers --json  # Raw JSON output
 npx @aidotengineer/aie eu mcp             # MCP connection info
@@ -86,8 +158,8 @@ const anthropic = speakers.filter(s =>
 console.log(`${anthropic.length} speakers from Anthropic`);
 
 // Get all keynotes
-const talks = await fetch('https://ai.engineer/europe/talks.json').then(r => r.json());
-const keynotes = talks.talks.filter(t => t.type === 'keynote');
+const data = await fetch('https://ai.engineer/europe/sessions.json').then(r => r.json());
+const keynotes = data.sessions.filter(t => t.type === 'keynote');
 console.log(keynotes.map(k => `${k.time}: ${k.title} — ${k.speakers.join(', ')}`));
 ```
 
@@ -96,21 +168,21 @@ console.log(keynotes.map(k => `${k.time}: ${k.title} — ${k.speakers.join(', ')
 ```python
 import requests
 
-# --- Fetch and explore talks ---
-data = requests.get('https://ai.engineer/europe/talks.json').json()
-print(f"{data['totalTalks']} talks across {data['dates']}")
+# --- Fetch and explore sessions ---
+data = requests.get('https://ai.engineer/europe/sessions.json').json()
+print(f"{data['totalSessions']} sessions across {data['dates']}")
 
-# Day 2 talks
-day2 = [t for t in data['talks'] if t.get('day') == 'April 9']
-for talk in day2:
-    speakers = ', '.join(talk.get('speakers', []))
-    print(f"{talk.get('time', '?')}: {talk.get('title', 'TBA')} — {speakers}")
+# Day 2 sessions
+day2 = [s for s in data['sessions'] if s.get('day') == 'April 9']
+for s in day2:
+    speakers = ', '.join(s.get('speakers', []))
+    print(f"{s.get('time', '?')}: {s.get('title', 'TBA')} — {speakers}")
 
-# Talks about agents
-agent_talks = [t for t in data['talks']
-               if 'agent' in (t.get('title') or '').lower()
-               or t.get('track', '').lower() == 'ai agents']
-print(f"\n{len(agent_talks)} talks about agents")
+# Sessions about agents
+agent_sessions = [s for s in data['sessions']
+                  if 'agent' in (s.get('title') or '').lower()
+                  or s.get('track', '').lower() == 'ai agents']
+print(f"\n{len(agent_sessions)} sessions about agents")
 
 # --- Fetch speakers ---
 sp = requests.get('https://ai.engineer/europe/speakers.json').json()
@@ -157,8 +229,8 @@ for s in speakers['speakers']:
     print(f"  {s['name']}: {s.get('role', '')} @ {s.get('company', '')}")
 
 # Get Day 2 keynotes
-keynotes = mcp_call('list_talks', {'day': 'April 9', 'type': 'keynote'})
-for t in keynotes['talks']:
+keynotes = mcp_call('list_sessions', {'day': 'April 9', 'type': 'keynote'})
+for t in keynotes['sessions']:
     print(f"  {t['time']}: {t['title']} — {', '.join(t['speakers'])}")
 
 # Get schedule for one day
@@ -190,8 +262,8 @@ Add to your Claude Desktop, Cursor, Windsurf, or any MCP client config:
 | Tool | Description | Optional params |
 |---|---|---|
 | `get_conference_info` | Dates, venue, links, metadata | — |
-| `list_speakers` | Speakers with roles, companies, socials, talks | `search` |
-| `list_talks` | Talks with descriptions, times, rooms, tracks | `day`, `type`, `track`, `search` |
+| `list_speakers` | Speakers with roles, companies, socials, sessions | `search` |
+| `list_sessions` | Sessions with descriptions, times, rooms, tracks | `day`, `type`, `track`, `search` |
 | `get_schedule` | Full schedule organized by day | `day` |
 
 ### Example tool call (curl)
@@ -219,12 +291,12 @@ import requests, json
 resp = requests.post('https://ai.engineer/europe/mcp', json={
     'jsonrpc': '2.0', 'id': 1,
     'method': 'tools/call',
-    'params': {'name': 'list_talks', 'arguments': {'track': 'MCP'}}
+    'params': {'name': 'list_sessions', 'arguments': {'track': 'MCP'}}
 }, headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
 
 result = json.loads(resp.json()['result']['content'][0]['text'])
-for talk in result['talks']:
-    print(f"{talk['title']} — {', '.join(talk['speakers'])}")
+for s in result['sessions']:
+    print(f"{s['title']} — {', '.join(s['speakers'])}")
 ```
 
 ### Initialize + discover tools
@@ -276,7 +348,7 @@ type PublicSpeaker = {
   github?: string;     // Full URL
   website?: string;
   photoUrl?: string;   // "https://ai.engineer/europe-speakers/name.jpg"
-  talks: PublicTalk[];
+  sessions: PublicTalk[];
 };
 ```
 
@@ -286,7 +358,7 @@ See `references/EXAMPLES.md` for 4 complete TS + Python recipes: topic index, se
 
 ## Edge cases
 
-- Some talks have empty `description` — fall back to title + speakers
+- Some sessions have empty `description` — fall back to title + speakers
 - `speakers` array can be empty for break/logistics sessions
 - `type` field may be missing for some sessions — treat as "talk"
 - Speaker photos are served from `ai.engineer/europe-speakers/` — some speakers may not have a photo
@@ -310,3 +382,4 @@ These fields exist in the source data but are stripped from all public endpoints
 - Source code: [github.com/aiDotEngineer/aiecode2025](https://github.com/aiDotEngineer/aiecode2025)
 - CLI on npm: [@aidotengineer/aie](https://www.npmjs.com/package/@aidotengineer/aie)
 - Twitter: [@aiDotEngineer](https://x.com/aiDotEngineer)
+- Gemini Embedding 2 docs: [ai.google.dev/gemini-api/docs/models/gemini-embedding-2-preview](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2-preview)

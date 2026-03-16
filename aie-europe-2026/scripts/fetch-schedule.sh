@@ -10,8 +10,8 @@ DAY="${1:-}"
 
 if [ -n "$DAY" ]; then
   echo "=== AI Engineer Europe 2026 — $DAY ==="
-  curl -s "$BASE/talks.json" | jq --arg day "$DAY" '
-    .talks
+  curl -s "$BASE/sessions.json" | jq --arg day "$DAY" '
+    .sessions
     | map(select(.day == $day))
     | sort_by(.time)
     | .[]
@@ -22,8 +22,8 @@ else
   for d in "April 8" "April 9" "April 10"; do
     echo ""
     echo "--- $d ---"
-    curl -s "$BASE/talks.json" | jq --arg day "$d" '
-      .talks
+    curl -s "$BASE/sessions.json" | jq --arg day "$d" '
+      .sessions
       | map(select(.day == $day))
       | sort_by(.time)
       | .[]

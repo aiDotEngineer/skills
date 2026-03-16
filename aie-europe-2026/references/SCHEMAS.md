@@ -2,9 +2,9 @@
 
 Full response structures for AI Engineer Europe 2026 endpoints.
 
-## talks.json
+## sessions.json
 
-**URL:** `GET https://ai.engineer/europe/talks.json`
+**URL:** `GET https://ai.engineer/europe/sessions.json`
 
 ### Response envelope
 
@@ -14,8 +14,8 @@ Full response structures for AI Engineer Europe 2026 endpoints.
   "dates": "April 8-10, 2026",
   "location": "London, UK",
   "website": "https://ai.engineer/europe",
-  "totalTalks": 147,
-  "talks": [ ... ]
+  "totalSessions": 147,
+  "sessions": [ ... ]
 }
 ```
 
@@ -109,7 +109,7 @@ Full talk with description:
   "twitter": "https://x.com/AChallapally",
   "linkedin": "https://www.linkedin.com/in/adityachallapally/",
   "photoUrl": "https://ai.engineer/europe-speakers/aditya-challapally.jpg",
-  "talks": [
+  "sessions": [
     {
       "title": "The GenAI Divide",
       "day": "April 9",
@@ -122,7 +122,7 @@ Full talk with description:
 }
 ```
 
-Speaker with multiple talks:
+Speaker with multiple sessions:
 
 ```json
 {
@@ -131,7 +131,7 @@ Speaker with multiple talks:
   "company": "AI Engineer",
   "twitter": "https://x.com/swyx",
   "photoUrl": "https://ai.engineer/europe-speakers/swyx.jpg",
-  "talks": [
+  "sessions": [
     { "title": "Opening Keynote", "day": "April 9", ... },
     { "title": "Fireside Chat with swyx and Tuomas Artman", "day": "April 10", ... }
   ]
@@ -143,7 +143,7 @@ Speaker with multiple talks:
 - Speakers are sorted alphabetically by name
 - Social links are full URLs when present, omitted when absent
 - `photoUrl` follows the pattern `https://ai.engineer/europe-speakers/{filename}`
-- A speaker's `talks` array contains the same `PublicTalk` objects as `talks.json`
+- A speaker's `sessions` array contains the same `PublicTalk` objects as `sessions.json`
 
 ---
 
@@ -194,29 +194,29 @@ class Speaker:
     github: str = ''
     website: str = ''
     photoUrl: str = ''
-    talks: list[Talk] = field(default_factory=list)
+    sessions: list[Talk] = field(default_factory=list)
 
     def __post_init__(self):
-        self.talks = [Talk(**t) if isinstance(t, dict) else t for t in self.talks]
+        self.sessions = [Talk(**t) if isinstance(t, dict) else t for t in self.sessions]
 
-def fetch_talks() -> list[Talk]:
-    data = json.loads(urlopen('https://ai.engineer/europe/talks.json').read())
-    return [Talk(**t) for t in data['talks']]
+def fetch_sessions() -> list[Talk]:
+    data = json.loads(urlopen('https://ai.engineer/europe/sessions.json').read())
+    return [Talk(**t) for t in data['sessions']]
 
 def fetch_speakers() -> list[Speaker]:
     data = json.loads(urlopen('https://ai.engineer/europe/speakers.json').read())
     return [Speaker(**s) for s in data['speakers']]
 
 # Usage
-talks = fetch_talks()
-keynotes = [t for t in talks if t.type == 'keynote']
+sessions = fetch_sessions()
+keynotes = [s for s in sessions if s.type == 'keynote']
 for k in keynotes:
     print(f"{k.time}: {k.title} — {', '.join(k.speakers)}")
 
 speakers = fetch_speakers()
 for s in speakers:
     if s.company and 'google' in s.company.lower():
-        print(f"{s.name} ({s.role}) — {len(s.talks)} talks")
+        print(f"{s.name} ({s.role}) — {len(s.sessions)} sessions")
 ```
 
 ---

@@ -33,7 +33,7 @@ type PublicSpeaker = {
   company?: string;
   twitter?: string;
   photoUrl?: string;
-  talks: PublicTalk[];
+  sessions: PublicTalk[];
 };
 
 type TopicEntry = {
@@ -48,7 +48,7 @@ async function buildTopicIndex(): Promise<TopicEntry[]> {
   const topicMap = new Map<string, TopicEntry['speakers']>();
 
   for (const speaker of speakers) {
-    for (const talk of speaker.talks) {
+    for (const talk of speaker.sessions) {
       const topics: string[] = [];
       if (talk.track) topics.push(talk.track);
 
@@ -103,7 +103,7 @@ def build_topic_index() -> list[dict]:
     topic_map: dict[str, list[dict]] = defaultdict(list)
 
     for speaker in data['speakers']:
-        for talk in speaker.get('talks', []):
+        for talk in speaker.get('sessions', []):
             topics = []
             if talk.get('track'):
                 topics.append(talk['track'].lower())
@@ -134,26 +134,20 @@ for entry in index[:10]:
 
 ---
 
-## 2. Semantic Search: Embed, Cluster, and Retrieve Similar Talks & Speakers
+## 2. Semantic Search with Pre-Computed Gemini Embeddings
 
-Use OpenAI embeddings to build a vector index of talks and speakers. Then query it to find the most relevant sessions for any natural-language interest — "multimodal reasoning agents" finds talks you'd never match with keyword search.
+Use the pre-computed 128-dim [Gemini Embedding 2](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2-preview) vectors to build semantic search over speakers and sessions — no embedding API calls needed for the corpus. Vectors are truncated from 3072 to 128 dims via [Matryoshka Representation Learning (MRL)](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2-preview#controlling-embedding-size).
 
 ### TypeScript
 
 ~~~typescript
-// Embed talk descriptions + speaker bios, then retrieve by cosine similarity.
-// Uses OpenAI embeddings API — swap for any embedding provider.
+// Use pre-computed embeddings — no API key needed for the corpus.
+// Only need Gemini API for generating query embeddings.
 
-import OpenAI from 'openai';
-
-const openai = new OpenAI(); // uses OPENAI_API_KEY env var
-
-type PublicTalk = {
-  title?: string; description?: string; day?: string; time?: string;
-  room?: string; type?: string; track?: string; speakers: string[];
+type EmbeddedSpeaker = {
+  name: string; role?: string; company?: string;
+  embedding: number[]; // 128-dim Gemini Embedding 2 (MRL)
 };
-
-type EmbeddedTalk = PublicTalk & { embedding: number[] };
 
 function cosineSim(a: number[], b: number[]): number {
   let dot = 0, magA = 0, magB = 0;
@@ -165,58 +159,50 @@ function cosineSim(a: number[], b: number[]): number {
   return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
-async function embedTexts(texts: string[]): Promise<number[][]> {
-  // Batch embed — OpenAI supports up to 2048 inputs per call
-  const res = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: texts,
-  });
-  return res.data.map((d) => d.embedding);
-}
+// Fetch pre-computed speaker embeddings (128-dim, ~300KB)
+const res = await fetch('https://ai.engineer/europe/speakers-embeddings.json');
+const { speakers }: { speakers: EmbeddedSpeaker[] } = await res.json();
 
-async function buildTalkIndex(): Promise<EmbeddedTalk[]> {
-  const res = await fetch('https://ai.engineer/europe/talks.json');
-  const { talks }: { talks: PublicTalk[] } = await res.json();
-
-  // Build text representation for each talk
-  const texts = talks.map((t) =>
-    [t.title, t.description, t.track, t.speakers.join(', ')]
-      .filter(Boolean).join(' — ')
+// Generate a query embedding using Gemini (same model + MRL dim)
+async function embedQuery(text: string, apiKey: string): Promise<number[]> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2-preview:embedContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'models/gemini-embedding-2-preview',
+        content: { parts: [{ text }] },
+        taskType: 'RETRIEVAL_QUERY',
+        outputDimensionality: 128,
+      }),
+    }
   );
-
-  const embeddings = await embedTexts(texts);
-  return talks.map((t, i) => ({ ...t, embedding: embeddings[i]! }));
+  const data = await res.json();
+  return data.embedding.values;
 }
 
-async function findSimilarTalks(
-  query: string,
-  index: EmbeddedTalk[],
-  topK = 5
-): Promise<{ talk: EmbeddedTalk; score: number }[]> {
-  const [queryEmb] = await embedTexts([query]);
-  return index
-    .map((talk) => ({ talk, score: cosineSim(queryEmb!, talk.embedding) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK);
+// Search speakers by semantic similarity
+const queryVec = await embedQuery('autonomous coding agents', process.env.GEMINI_API_KEY!);
+const ranked = speakers
+  .map(s => ({ name: s.name, company: s.company, score: cosineSim(queryVec, s.embedding) }))
+  .sort((a, b) => b.score - a.score)
+  .slice(0, 5);
+
+for (const r of ranked) {
+  console.log(`  [${r.score.toFixed(3)}] ${r.name} (${r.company ?? '?'})`);
 }
 
-// Build the index once, then query as many times as you want
-const index = await buildTalkIndex();
+// --- Same works for sessions ---
+const sessRes = await fetch('https://ai.engineer/europe/sessions-embeddings.json');
+const { sessions } = await sessRes.json();
+const sessionRanked = sessions
+  .map((s: any) => ({ title: s.title, speakers: s.speakers, score: cosineSim(queryVec, s.embedding) }))
+  .sort((a: any, b: any) => b.score - a.score)
+  .slice(0, 5);
 
-const queries = [
-  'building autonomous coding agents',
-  'MCP tool integrations for production',
-  'open source model fine-tuning',
-  'AI safety and evaluation frameworks',
-];
-
-for (const query of queries) {
-  console.log(`\n"${query}":`);
-  const results = await findSimilarTalks(query, index, 3);
-  for (const { talk, score } of results) {
-    console.log(`  [${score.toFixed(3)}] ${talk.title} — ${talk.speakers.join(', ')}`);
-    console.log(`         ${talk.day} ${talk.time} | ${talk.track ?? 'Main'}`);
-  }
+for (const r of sessionRanked) {
+  console.log(`  [${r.score.toFixed(3)}] ${r.title} — ${r.speakers.join(', ')}`);
 }
 ~~~
 
@@ -225,98 +211,57 @@ for (const query of queries) {
 ~~~python
 import requests
 import numpy as np
-from openai import OpenAI
 
-client = OpenAI()  # uses OPENAI_API_KEY env var
+# --- Load pre-computed embeddings (no API key needed) ---
+
+data = requests.get('https://ai.engineer/europe/speakers-embeddings.json').json()
+speakers = data['speakers']
+# Each speaker has a 128-dim embedding from Gemini Embedding 2 (MRL)
+speaker_vecs = np.array([s['embedding'] for s in speakers])  # shape: (N, 128)
 
 def cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-def embed_texts(texts: list[str]) -> np.ndarray:
-    """Batch embed texts using OpenAI."""
-    res = client.embeddings.create(model='text-embedding-3-small', input=texts)
-    return np.array([d.embedding for d in res.data])
+# --- Generate query embedding with Gemini API ---
 
-def build_talk_index() -> tuple[list[dict], np.ndarray]:
-    """Fetch talks and embed them."""
-    data = requests.get('https://ai.engineer/europe/talks.json').json()
-    talks = data['talks']
+def embed_query(text: str, api_key: str) -> np.ndarray:
+    """Generate a 128-dim query embedding using Gemini Embedding 2 + MRL."""
+    resp = requests.post(
+        f'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2-preview:embedContent?key={api_key}',
+        json={
+            'model': 'models/gemini-embedding-2-preview',
+            'content': {'parts': [{'text': text}]},
+            'taskType': 'RETRIEVAL_QUERY',
+            'outputDimensionality': 128,
+        }
+    )
+    return np.array(resp.json()['embedding']['values'])
 
-    texts = [
-        ' — '.join(filter(None, [
-            t.get('title'), t.get('description'),
-            t.get('track'), ', '.join(t.get('speakers', []))
-        ]))
-        for t in talks
-    ]
+import os
+query_vec = embed_query('autonomous coding agents', os.environ['GEMINI_API_KEY'])
 
-    embeddings = embed_texts(texts)
-    return talks, embeddings
+# --- Semantic search ---
 
-def find_similar_talks(query: str, talks: list[dict],
-                       embeddings: np.ndarray, top_k: int = 5) -> list[dict]:
-    """Find the most similar talks to a natural-language query."""
-    query_emb = embed_texts([query])[0]
-    scores = [cosine_sim(query_emb, emb) for emb in embeddings]
-    ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
+scores = [cosine_sim(query_vec, np.array(s['embedding'])) for s in speakers]
+ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
 
-    return [
-        {'talk': talks[i], 'score': score}
-        for i, score in ranked[:top_k]
-    ]
+print('Top 5 speakers for "autonomous coding agents":')
+for i, score in ranked[:5]:
+    s = speakers[i]
+    print(f"  [{score:.3f}] {s['name']} ({s.get('company', '?')})")
 
-# --- Cluster speakers by expertise ---
+# --- Cluster speakers by expertise using pre-computed embeddings ---
 
-def cluster_speakers(n_clusters: int = 8):
-    """Embed speaker profiles and cluster them by expertise."""
-    from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans
 
-    data = requests.get('https://ai.engineer/europe/speakers.json').json()
-    speakers = data['speakers']
+kmeans = KMeans(n_clusters=6, random_state=42, n_init=10)
+labels = kmeans.fit_predict(speaker_vecs)
 
-    texts = [
-        ' — '.join(filter(None, [
-            s.get('name'), s.get('role'), s.get('company'),
-            ', '.join(t.get('title', '') for t in s.get('talks', []))
-        ]))
-        for s in speakers
-    ]
+clusters: dict[int, list] = {}
+for i, label in enumerate(labels):
+    clusters.setdefault(label, []).append(speakers[i])
 
-    embeddings = embed_texts(texts)
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    labels = kmeans.fit_predict(embeddings)
-
-    clusters: dict[int, list] = {}
-    for i, label in enumerate(labels):
-        clusters.setdefault(label, []).append(speakers[i])
-
-    return clusters
-
-# --- Usage ---
-
-# Build index once
-talks, embeddings = build_talk_index()
-
-# Semantic search
-queries = [
-    'building autonomous coding agents',
-    'MCP tool integrations for production',
-    'open source model fine-tuning',
-    'AI safety and evaluation frameworks',
-]
-
-for query in queries:
-    print(f'\n"{query}":')
-    results = find_similar_talks(query, talks, embeddings, top_k=3)
-    for r in results:
-        t = r['talk']
-        speakers = ', '.join(t.get('speakers', []))
-        print(f"  [{r['score']:.3f}] {t.get('title', 'TBA')} — {speakers}")
-        print(f"         {t.get('day', '?')} {t.get('time', '?')} | {t.get('track', 'Main')}")
-
-# Cluster speakers by expertise
 print('\n--- Speaker Clusters ---\n')
-clusters = cluster_speakers(n_clusters=6)
 for label, members in sorted(clusters.items()):
     names = [s['name'] for s in members[:5]]
     companies = set(s.get('company', '?') for s in members if s.get('company'))
@@ -341,10 +286,10 @@ type PublicTalk = {
 };
 
 async function getDayPlan(day: string) {
-  const res = await fetch('https://ai.engineer/europe/talks.json');
-  const { talks }: { talks: PublicTalk[] } = await res.json();
+  const res = await fetch('https://ai.engineer/europe/sessions.json');
+  const { sessions }: { sessions: PublicTalk[] } = await res.json();
 
-  const dayTalks = talks.filter((t) => t.day === day && t.type !== 'break');
+  const dayTalks = sessions.filter((t) => t.day === day && t.type !== 'break');
 
   // Group by time slot - same Map pattern as llms-txt.ts
   const slotMap = new Map<string, PublicTalk[]>();
@@ -408,13 +353,13 @@ from collections import defaultdict
 
 def get_day_plan(day: str) -> list[dict]:
     """Get all time slots for a given day with parallel track options."""
-    data = requests.get('https://ai.engineer/europe/talks.json').json()
+    data = requests.get('https://ai.engineer/europe/sessions.json').json()
 
-    day_talks = [t for t in data['talks']
-                 if t.get('day') == day and t.get('type') != 'break']
+    day_sessions = [t for t in data['sessions']
+                    if t.get('day') == day and t.get('type') != 'break']
 
     slots: dict[str, list] = defaultdict(list)
-    for talk in day_talks:
+    for talk in day_sessions:
         slots[talk.get('time', 'TBD')].append(talk)
 
     return sorted(
@@ -477,28 +422,28 @@ type Connection = {
 
 async function buildSpeakerGraph(): Promise<Connection[]> {
   const [talksRes, spkRes] = await Promise.all([
-    fetch('https://ai.engineer/europe/talks.json'),
+    fetch('https://ai.engineer/europe/sessions.json'),
     fetch('https://ai.engineer/europe/speakers.json'),
   ]);
-  const { talks }: { talks: PublicTalk[] } = await talksRes.json();
+  const { sessions }: { sessions: PublicTalk[] } = await talksRes.json();
   const { speakers }: { speakers: PublicSpeaker[] } = await spkRes.json();
 
   const companyOf = new Map(speakers.map((s) => [s.name, s.company]));
   const connections = new Map<string, Connection>();
 
-  for (const talk of talks) {
-    if (talk.speakers.length < 2) continue;
+  for (const session of sessions) {
+    if (session.speakers.length < 2) continue;
 
-    for (let i = 0; i < talk.speakers.length; i++) {
-      for (let j = i + 1; j < talk.speakers.length; j++) {
-        const pair = [talk.speakers[i]!, talk.speakers[j]!].sort() as [string, string];
+    for (let i = 0; i < session.speakers.length; i++) {
+      for (let j = i + 1; j < session.speakers.length; j++) {
+        const pair = [session.speakers[i]!, session.speakers[j]!].sort() as [string, string];
         const key = pair.join('|');
 
         const existing = connections.get(key) ?? {
           speakers: pair, sharedTalks: [],
           companies: [companyOf.get(pair[0]), companyOf.get(pair[1])],
         };
-        if (talk.title) existing.sharedTalks.push(talk.title);
+        if (session.title) existing.sharedTalks.push(session.title);
         connections.set(key, existing);
       }
     }
@@ -528,14 +473,14 @@ from itertools import combinations
 
 def build_speaker_graph() -> list[dict]:
     """Find speakers who co-present talks to map the collaboration network."""
-    talks = requests.get('https://ai.engineer/europe/talks.json').json()['talks']
+    sessions = requests.get('https://ai.engineer/europe/sessions.json').json()['sessions']
     speakers = requests.get('https://ai.engineer/europe/speakers.json').json()['speakers']
 
     company_of = {s['name']: s.get('company') for s in speakers}
     connections: dict[tuple, dict] = {}
 
-    for talk in talks:
-        spks = talk.get('speakers', [])
+    for session in sessions:
+        spks = session.get('speakers', [])
         if len(spks) < 2:
             continue
 
@@ -546,8 +491,8 @@ def build_speaker_graph() -> list[dict]:
                     'speakers': [a, b], 'shared_talks': [],
                     'companies': [company_of.get(a), company_of.get(b)],
                 }
-            if talk.get('title'):
-                connections[key]['shared_talks'].append(talk['title'])
+            if session.get('title'):
+                connections[key]['shared_talks'].append(session['title'])
 
     return sorted(connections.values(),
                   key=lambda x: len(x['shared_talks']), reverse=True)
