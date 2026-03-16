@@ -326,116 +326,7 @@ for label, members in sorted(clusters.items()):
 
 ---
 
-## 3. Company Leaderboard: Who's Sending the Most Speakers?
-
-Join speakers with their companies to build a leaderboard — great for "which companies are most active in the AI engineering community" analysis.
-
-### TypeScript
-
-~~~typescript
-// Uses the real PublicSpeaker type - company comes from the raw schedule's
-// speaker.company.name field, merged in getPublicSpeakers()
-
-type PublicSpeaker = {
-  name: string; role?: string; company?: string; companyDescription?: string;
-  twitter?: string; talks: { title?: string; type?: string; track?: string }[];
-};
-
-type CompanyStats = {
-  company: string; description?: string; speakerCount: number;
-  talkCount: number; speakers: string[]; tracks: string[]; hasKeynote: boolean;
-};
-
-async function getCompanyLeaderboard(): Promise<CompanyStats[]> {
-  const res = await fetch('https://ai.engineer/europe/speakers.json');
-  const { speakers }: { speakers: PublicSpeaker[] } = await res.json();
-
-  const companyMap = new Map<string, CompanyStats>();
-
-  for (const s of speakers) {
-    if (!s.company) continue;
-    const key = s.company.toLowerCase();
-
-    const existing = companyMap.get(key) ?? {
-      company: s.company, description: s.companyDescription,
-      speakerCount: 0, talkCount: 0, speakers: [], tracks: [], hasKeynote: false,
-    };
-
-    existing.speakerCount++;
-    existing.speakers.push(s.name);
-    existing.talkCount += s.talks.length;
-
-    for (const talk of s.talks) {
-      if (talk.track && !existing.tracks.includes(talk.track)) existing.tracks.push(talk.track);
-      if (talk.type === 'keynote') existing.hasKeynote = true;
-    }
-
-    companyMap.set(key, existing);
-  }
-
-  return Array.from(companyMap.values())
-    .sort((a, b) => b.speakerCount - a.speakerCount);
-}
-
-const leaderboard = await getCompanyLeaderboard();
-console.log('Company Leaderboard\n');
-for (const [i, c] of leaderboard.slice(0, 15).entries()) {
-  const keynote = c.hasKeynote ? ' * keynote' : '';
-  console.log(`${i + 1}. ${c.company} - ${c.speakerCount} speakers, ${c.talkCount} talks${keynote}`);
-  console.log(`   Speakers: ${c.speakers.join(', ')}`);
-  console.log(`   Tracks: ${c.tracks.join(', ') || 'N/A'}`);
-}
-~~~
-
-### Python
-
-~~~python
-import requests
-
-def company_leaderboard() -> list[dict]:
-    """Rank companies by number of speakers at the conference."""
-    data = requests.get('https://ai.engineer/europe/speakers.json').json()
-    companies: dict[str, dict] = {}
-
-    for speaker in data['speakers']:
-        company = speaker.get('company')
-        if not company:
-            continue
-        key = company.lower()
-
-        if key not in companies:
-            companies[key] = {
-                'company': company, 'description': speaker.get('companyDescription'),
-                'speaker_count': 0, 'talk_count': 0, 'speakers': [],
-                'tracks': set(), 'has_keynote': False,
-            }
-
-        entry = companies[key]
-        entry['speaker_count'] += 1
-        entry['speakers'].append(speaker['name'])
-        entry['talk_count'] += len(speaker.get('talks', []))
-
-        for talk in speaker.get('talks', []):
-            if talk.get('track'): entry['tracks'].add(talk['track'])
-            if talk.get('type') == 'keynote': entry['has_keynote'] = True
-
-    result = sorted(companies.values(), key=lambda x: x['speaker_count'], reverse=True)
-    for r in result:
-        r['tracks'] = sorted(r['tracks'])
-    return result
-
-leaderboard = company_leaderboard()
-print('Company Leaderboard\n')
-for i, c in enumerate(leaderboard[:15], 1):
-    keynote = ' * keynote' if c['has_keynote'] else ''
-    print(f"{i}. {c['company']} - {c['speaker_count']} speakers, {c['talk_count']} talks{keynote}")
-    print(f"   Speakers: {', '.join(c['speakers'])}")
-    print(f"   Tracks: {', '.join(c['tracks']) or 'N/A'}")
-~~~
-
----
-
-## 4. Multi-Track Day Planner: Optimize Your Conference Path
+## 3. Multi-Track Day Planner: Optimize Your Conference Path
 
 Days 2-3 run talks in parallel across 5-6 rooms. Fetch the schedule, group by time slot, and pick one talk per slot to maximize track coverage.
 
@@ -566,9 +457,9 @@ for talk in picks:
 
 ---
 
-## 5. Speaker Social Graph: Map Connections via Co-Presentations
+## 4. Speaker Social Graph: "If You Liked This Speaker, Meet These People"
 
-Find speakers who present together (panels, joint talks) to build a collaboration graph — useful for networking recommendations or community analysis.
+Find speakers who co-present (panels, joint talks) to surface collaboration-based recommendations. Unlike semantic similarity (#2), this uses _social signal_ — if two speakers chose to present together, their work is connected. Attendees can use this to discover related speakers they wouldn't find via topic search, and to identify networking clusters at the conference.
 
 ### TypeScript
 
