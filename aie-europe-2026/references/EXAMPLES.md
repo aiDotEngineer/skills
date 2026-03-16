@@ -267,17 +267,6 @@ for label, members in sorted(clusters.items()):
     companies = set(s.get('company', '?') for s in members if s.get('company'))
     print(f"Cluster {label} ({len(members)} speakers): {', '.join(names)}")
     print(f"  Companies: {', '.join(list(companies)[:5])}\n")
-
-# --- Or use the SQLite DB for offline/larger workloads ---
-
-import sqlite3, struct
-
-conn = sqlite3.connect('embeddings.db')
-rows = conn.execute('SELECT name, company, embedding FROM speakers WHERE conference="europe"').fetchall()
-for name, company, blob in rows[:3]:
-    vec = np.array(struct.unpack(f'{len(blob)//4}f', blob))
-    score = cosine_sim(query_vec, vec)
-    print(f"  [{score:.3f}] {name} ({company})")
 ~~~
 
 ---

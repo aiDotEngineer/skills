@@ -40,7 +40,6 @@ Base URL: `https://ai.engineer`
 | `/europe/mcp` | JSON-RPC | MCP server — tool calls for querying conference data |
 | `/europe/speakers-embeddings.json` | JSON | All speakers with 128-dim Gemini Embedding 2 vectors |
 | `/europe/sessions-embeddings.json` | JSON | All sessions with 128-dim Gemini Embedding 2 vectors |
-| `/embeddings.db` | SQLite | Vector DB with all embeddings + metadata (both conferences) |
 
 All endpoints are public, free, and CORS-enabled. Data is cached (`s-maxage=3600, stale-while-revalidate=86400`).
 
@@ -52,7 +51,7 @@ Pre-computed [Gemini Embedding 2](https://ai.google.dev/gemini-api/docs/models/g
 - **Dimensions:** 128 (truncated from 3072 via [Matryoshka Representation Learning](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2-preview#controlling-embedding-size))
 - **Task type:** `RETRIEVAL_DOCUMENT`
 
-The embedding JSON files include full metadata (name, company, role, talks, etc.) alongside the 128-dim vector for each speaker/session. The SQLite DB (`embeddings.db`) contains both Europe and NYC conference data with embeddings stored as packed float32 BLOBs.
+The embedding JSON files include full metadata (name, company, role, talks, etc.) alongside the 128-dim vector for each speaker/session.
 
 ### Fetch embeddings (curl)
 
@@ -62,9 +61,6 @@ curl https://ai.engineer/europe/speakers-embeddings.json | jq '.speakers[:2]'
 
 # Session embeddings
 curl https://ai.engineer/europe/sessions-embeddings.json | jq '.sessions[:2]'
-
-# SQLite vector DB (all conferences)
-curl -O https://ai.engineer/embeddings.db
 ```
 
 ### JavaScript — cosine similarity search
@@ -86,28 +82,21 @@ const ranked = speakers
 console.log(ranked);
 ```
 
-### Python — load SQLite vector DB
+### Python — cosine similarity search
 
 ```python
-import sqlite3, struct, numpy as np
+import json, urllib.request, numpy as np
 
-conn = sqlite3.connect('embeddings.db')  # 128-dim float32 BLOBs
-rows = conn.execute(
-    'SELECT name, embedding FROM speakers WHERE conference="europe"'
-).fetchall()
+data = json.loads(urllib.request.urlopen('https://ai.engineer/europe/speakers-embeddings.json').read())
+speakers = data['speakers']
 
-for name, blob in rows:
-    vec = np.array(struct.unpack(f'{len(blob)//4}f', blob))
-    print(f"{name}: {vec.shape}")  # (128,)
+def cosine(a, b):
+    a, b = np.array(a), np.array(b)
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-# Cosine similarity search
-def search(query_vec, rows, top_k=5):
-    scores = []
-    for name, blob in rows:
-        vec = np.array(struct.unpack(f'{len(blob)//4}f', blob))
-        score = np.dot(query_vec, vec) / (np.linalg.norm(query_vec) * np.linalg.norm(vec))
-        scores.append((name, score))
-    return sorted(scores, key=lambda x: -x[1])[:top_k]
+ranked = sorted(speakers, key=lambda s: cosine(query_emb, s['embedding']), reverse=True)[:5]
+for s in ranked:
+    print(s['name'], s.get('company', ''))
 ```
 
 ### Generate your own query embedding (to search against pre-computed vectors)
