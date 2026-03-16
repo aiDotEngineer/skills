@@ -38,8 +38,91 @@ Base URL: `https://ai.engineer`
 | `/europe/talks.json` | JSON | All talks with titles, descriptions, speakers, times, rooms, tracks |
 | `/europe/speakers.json` | JSON | All speakers with roles, companies, social links, photos, talks |
 | `/europe/mcp` | JSON-RPC | MCP server — tool calls for querying conference data |
+| `/europe/speakers-embeddings.json` | JSON | All speakers with 128-dim Gemini Embedding 2 vectors |
+| `/europe/sessions-embeddings.json` | JSON | All sessions with 128-dim Gemini Embedding 2 vectors |
+| `/embeddings.db` | SQLite | Vector DB with all embeddings + metadata (both conferences) |
 
 All endpoints are public, free, and CORS-enabled. Data is cached (`s-maxage=3600, stale-while-revalidate=86400`).
+
+## Embeddings
+
+Pre-computed [Gemini Embedding 2](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2-preview) vectors for semantic search, clustering, and recommendations.
+
+- **Model:** `gemini-embedding-2-preview`
+- **Dimensions:** 128 (truncated from 3072 via [Matryoshka Representation Learning](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2-preview#controlling-embedding-size))
+- **Task type:** `RETRIEVAL_DOCUMENT`
+
+The embedding JSON files include full metadata (name, company, role, talks, etc.) alongside the 128-dim vector for each speaker/session. The SQLite DB (`embeddings.db`) contains both Europe and NYC conference data with embeddings stored as packed float32 BLOBs.
+
+### Fetch embeddings (curl)
+
+```bash
+# Speaker embeddings (128-dim Gemini Embedding 2, MRL)
+curl https://ai.engineer/europe/speakers-embeddings.json | jq '.speakers[:2]'
+
+# Session embeddings
+curl https://ai.engineer/europe/sessions-embeddings.json | jq '.sessions[:2]'
+
+# SQLite vector DB (all conferences)
+curl -O https://ai.engineer/embeddings.db
+```
+
+### JavaScript — cosine similarity search
+
+```javascript
+const res = await fetch('https://ai.engineer/europe/speakers-embeddings.json');
+const { speakers } = await res.json();
+
+// Cosine similarity
+const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
+const norm = (a) => Math.sqrt(dot(a, a));
+const cosine = (a, b) => dot(a, b) / (norm(a) * norm(b));
+
+// Compare against a query embedding (128-dim from Gemini)
+const ranked = speakers
+  .map(s => ({ name: s.name, score: cosine(queryEmbedding, s.embedding) }))
+  .sort((a, b) => b.score - a.score)
+  .slice(0, 5);
+console.log(ranked);
+```
+
+### Python — load SQLite vector DB
+
+```python
+import sqlite3, struct, numpy as np
+
+conn = sqlite3.connect('embeddings.db')  # 128-dim float32 BLOBs
+rows = conn.execute(
+    'SELECT name, embedding FROM speakers WHERE conference="europe"'
+).fetchall()
+
+for name, blob in rows:
+    vec = np.array(struct.unpack(f'{len(blob)//4}f', blob))
+    print(f"{name}: {vec.shape}")  # (128,)
+
+# Cosine similarity search
+def search(query_vec, rows, top_k=5):
+    scores = []
+    for name, blob in rows:
+        vec = np.array(struct.unpack(f'{len(blob)//4}f', blob))
+        score = np.dot(query_vec, vec) / (np.linalg.norm(query_vec) * np.linalg.norm(vec))
+        scores.append((name, score))
+    return sorted(scores, key=lambda x: -x[1])[:top_k]
+```
+
+### Generate your own query embedding (to search against pre-computed vectors)
+
+```bash
+# Use the Gemini API with the same model + MRL dimensionality
+curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2-preview:embedContent?key=$GEMINI_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "models/gemini-embedding-2-preview",
+    "content": { "parts": [{ "text": "autonomous coding agents" }] },
+    "taskType": "RETRIEVAL_QUERY",
+    "outputDimensionality": 128
+  }'
+```
 
 ## Quick start
 
@@ -310,3 +393,4 @@ These fields exist in the source data but are stripped from all public endpoints
 - Source code: [github.com/aiDotEngineer/aiecode2025](https://github.com/aiDotEngineer/aiecode2025)
 - CLI on npm: [@aidotengineer/aie](https://www.npmjs.com/package/@aidotengineer/aie)
 - Twitter: [@aiDotEngineer](https://x.com/aiDotEngineer)
+- Gemini Embedding 2 docs: [ai.google.dev/gemini-api/docs/models/gemini-embedding-2-preview](https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2-preview)
