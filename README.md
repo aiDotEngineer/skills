@@ -19,6 +19,19 @@ Query AI Engineer Europe 2026 conference data — speakers, talks, schedule, and
 - Helper scripts for common tasks
 - Edge case documentation
 
+### public-qa-chatbot
+
+Best practices for building an unauthenticated public Q&A chatbot widget. Covers rate limiting, security hardening, cost optimization, semantic caching, observability, UX patterns, and architecture. Tech-agnostic with swappable alternatives for each component (LLM provider, hosting, rate limiter, vector DB, observability).
+
+**Includes:**
+- Multi-layer rate limiting patterns (per-turn, per-visitor, global)
+- Security hardening checklist (origin validation, input limits, safe errors)
+- Semantic caching with vector similarity search
+- Observability/tracing integration patterns
+- UX patterns (markdown, draggable/resizable, FAQ list, hover previews)
+- Swappable tech alternatives table for every component
+- Production implementation checklist
+
 ## Installation
 
 ```bash
