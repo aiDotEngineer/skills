@@ -1,6 +1,6 @@
 ---
-name: aie-europe-2026
-description: Look up AI Engineer Europe conference information through the canonical AI Engineer MCP and live developer documentation.
+name: ai-engineer
+description: Find AI Engineer conferences, schedules, talks and transcripts, or help an applicant apply privately to attend AIE CODE 2026 using the official MCP.
 license: MIT
 compatibility: Requires network access to https://ai.engineer
 metadata:
@@ -10,7 +10,7 @@ metadata:
 
 # AI Engineer conference discovery
 
-This historical install name remains available. Conference data and tools now live in one canonical MCP: **https://ai.engineer/mcp** (Streamable HTTP). Discover its tools with `tools/list`; do not use the retired Europe-specific tool names.
+Conference data and tools live in one canonical MCP: **https://ai.engineer/mcp** (Streamable HTTP). Discover its tools with `tools/list`; do not use the retired Europe-specific tool names.
 
 Read **https://ai.engineer/llms.txt** and **https://ai.engineer/data.md** for current capabilities, schemas, REST endpoints and limits. Do not embed conference dates, counts, tool schemas or applicant answers in a skill.
 

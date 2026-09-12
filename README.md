@@ -1,43 +1,21 @@
 # AI Engineer Skills
 
-Agent skills for [AI Engineer](https://ai.engineer) conference data and developer APIs.
+The canonical agent interface is **[AI Engineer MCP](https://ai.engineer/data#mcp)** at `https://ai.engineer/mcp`.
 
-Skills follow the [Agent Skills](https://agentskills.io/specification) format and work with 40+ agents including Devin, Claude Code, Cursor, Windsurf, and Codex.
+Use MCP to discover conferences, schedules, talks and transcript passages, and to apply privately to attend AIE CODE 2026. Read [llms.txt](https://ai.engineer/llms.txt) for live instructions and REST endpoints, or the [data guide](https://ai.engineer/data.md) for schemas. Applicant records and scores are never public.
 
-## Available Skills
+This repository remains available for skill users. It is a thin discovery guide; live MCP schemas and documentation are authoritative. No separate conference data or MCP implementation is maintained here.
 
-### aie-europe-2026
+## Available skills
 
-Query AI Engineer Europe 2026 conference data — speakers, talks, schedule, and more. Provides REST endpoints (JSON + plain text), an MCP server for agent tool calls, and a CLI.
-
-**Includes:**
-- 5 public endpoints (JSON, plain text, MCP)
-- TypeScript type definitions for all data models
-- Real API response examples from live production data
-- MCP server tool schemas and JSON-RPC examples
-- CLI commands via `@aidotengineer/aie`
-- Helper scripts for common tasks
-- Edge case documentation
-
-## Installation
+- **ai-engineer** — conference and talk discovery, plus private CODE 2026 attendee applications.
+- **aie-europe-2026** — existing install name preserved; now directs agents to the canonical MCP, current Europe data and CODE 2026 attendee application guidance.
+- **schedule-design** — guidance for designing conference schedules; independent of MCP connectivity.
 
 ```bash
-npx skills add aidotengineer/skills
+npx skills add aidotengineer/skills --skill ai-engineer
 ```
 
-Or install a specific skill:
-
-```bash
-npx skills add aidotengineer/skills --skill aie-europe-2026
-```
-
-## Links
-
-- [AI Engineer Europe 2026](https://ai.engineer/europe)
-- [Developer & AI page](https://ai.engineer/europe/developers)
-- [Agent Skills spec](https://agentskills.io/specification)
-- [skills.sh](https://skills.sh)
-
-## License
+To apply through an agent, read requirements, validate answers, review the complete application and approve submission. Attendee applications are for CODE 2026, not NYC or speaker proposals. CODE speaker proposals use [Sessionize](https://sessionize.com/aiecode26/).
 
 MIT
